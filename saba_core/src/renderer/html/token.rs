@@ -86,6 +86,70 @@ impl HtmlTokenizer {
             self.latest_token = Some(HTMLToken::EndTag { tag: String::new() });
         }
     }
+
+    fn append_tag_name(&mut self, c: char) {
+        assert!(self.latest_token.is_some());
+        if let Some(t) = self.latest_token.as_mut() {
+            match t {
+                HTMLToken::StartTag {
+                    ref mut tag,
+                    self_closing: _,
+                    attributes: _,
+                }
+                | HTMLToken::EndTag { ref mut tag } => {
+                    tag.push(c);
+                }
+                _ => panic!("`latest_token` should be either StartTag or EndTag"),
+            }
+        }
+    }
+
+    fn take_latest_token(&mut self) -> Option<HTMLToken> {
+        assert!(self.latest_token.is_some());
+
+        let t = self.latest_token.as_ref().cloned();
+        self.latest_token = None;
+        assert!(self.latest_token.is_none());
+
+        t
+    }
+
+    fn start_new_attribute(&mut self) {
+        assert!(self.latest_token.is_some());
+
+        if let Some(t) = self.latest_token.as_mut() {
+            match t {
+                HTMLToken::StartTag {
+                    tag: _,
+                    self_closing: _,
+                    ref mut attributes,
+                } => {
+                    attributes.push(Attribute::new());
+                }
+                _ => panic!("`latest_token` should be either StartTag"),
+            }
+        }
+    }
+
+    fn append_attribute(&mut self, c: char, is_name: bool) {
+        assert!(self.latest_token.is_some());
+
+        if let Some(t) = self.latest_token.as_mut() {
+            match t {
+                HTMLToken::StartTag {
+                    tag: _,
+                    self_closing: _,
+                    ref mut attributes,
+                } => {
+                    let len = attributes.len();
+                    assert!(len > 0);
+
+                    attributes[len - 1].add_char(c, is_name);
+                }
+                _ => panic!("`latest_token` should be either StartTag"),
+            }
+        }
+    }
 }
 
 impl Iterator for HtmlTokenizer {
@@ -171,6 +235,36 @@ impl Iterator for HtmlTokenizer {
                     }
 
                     self.append_tag_name(c);
+                }
+                State::BeforeAttributeName => {
+                    if c == '/' || c == '>' || self.is_eof() {
+                        self.reconsume = true;
+                        self.state = State::AfterAttributeName;
+                        continue;
+                    }
+
+                    self.reconsume = true;
+                    self.state = State::AfterAttributeName;
+                    self.start_new_attribute();
+                }
+                State::AttributeName => {
+                    if c == '=' || c == '/' || c == '>' || self.is_eof() {
+                        self.reconsume = true;
+                        self.state = State::AfterAttributeName;
+                        continue;
+                    }
+
+                    if c == '=' {
+                        self.state = State::BeforeAttributeValue;
+                        continue;
+                    }
+
+                    if c.is_ascii_uppercase() {
+                        self.append_attribute(c.to_ascii_lowercase(), /*is_name*/ true);
+                        continue;
+                    }
+
+                    self.append_attribute(c, /*is_name */ true)
                 }
                 _ => {}
             }
