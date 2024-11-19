@@ -150,6 +150,21 @@ impl HtmlTokenizer {
             }
         }
     }
+
+    fn set_self_closing_flag(&mut self) {
+        assert!(self.latest_token.is_some());
+
+        if let Some(t) = self.latest_token.as_mut() {
+            match t {
+                HTMLToken::StartTag {
+                    tag: _,
+                    ref mut self_closing,
+                    attributes: _,
+                } => *self_closing = true,
+                _ => panic!("`latest_token` should be either StartTag"),
+            }
+        }
+    }
 }
 
 impl Iterator for HtmlTokenizer {
@@ -260,11 +275,142 @@ impl Iterator for HtmlTokenizer {
                     }
 
                     if c.is_ascii_uppercase() {
-                        self.append_attribute(c.to_ascii_lowercase(), /*is_name*/ true);
+                        self.append_attribute(c.to_ascii_lowercase(), true);
                         continue;
                     }
 
-                    self.append_attribute(c, /*is_name */ true)
+                    self.append_attribute(c, true)
+                }
+                State::AfterAttributeName => {
+                    if c == ' ' {
+                        continue;
+                    }
+
+                    if c == '/' {
+                        self.state = State::SelfClosingStartTag;
+                        continue;
+                    }
+
+                    if c == '=' {
+                        self.state = State::BeforeAttributeValue;
+                        continue;
+                    }
+
+                    if c == '>' {
+                        self.state = State::Data;
+                        return self.take_latest_token();
+                    }
+
+                    if self.is_eof() {
+                        return Some(HTMLToken::Eof);
+                    }
+
+                    self.reconsume = true;
+                    self.state = State::AttributeName;
+                    self.start_new_attribute();
+                }
+                State::BeforeAttributeValue => {
+                    if c == ' ' {
+                        continue;
+                    }
+
+                    if c == '"' {
+                        self.state = State::AttributeValueDoubleQuoted;
+                        continue;
+                    }
+
+                    if c == '\'' {
+                        self.state = State::AttributeValueSingleQuoted;
+                        continue;
+                    }
+
+                    self.reconsume = true;
+                    self.state = State::AttributeValueUnquoted;
+                }
+                State::AttributeValueDoubleQuoted => {
+                    if c == '"' {
+                        self.state = State::AfterAttributeValueQuoted;
+                        continue;
+                    }
+
+                    if self.is_eof() {
+                        return Some(HTMLToken::Eof);
+                    }
+
+                    self.append_attribute(c, false);
+                }
+                State::AttributeValueSingleQuoted => {
+                    if c == '\'' {
+                        self.state = State::AfterAttributeValueQuoted;
+                        continue;
+                    }
+
+                    if self.is_eof() {
+                        return Some(HTMLToken::Eof);
+                    }
+
+                    self.append_attribute(c, false);
+                }
+                State::AttributeValueUnquoted => {
+                    if c == ' ' {
+                        self.state = State::BeforeAttributeName;
+                        continue;
+                    }
+
+                    if c == '>' {
+                        self.state = State::Data;
+                        return self.take_latest_token();
+                    }
+
+                    if self.is_eof() {
+                        return Some(HTMLToken::Eof);
+                    }
+
+                    self.append_attribute(c, false);
+                }
+                State::AfterAttributeValueQuoted => {
+                    if c == ' ' {
+                        self.state = State::BeforeAttributeName;
+                    }
+
+                    if c == '/' {
+                        self.state = State::SelfClosingStartTag;
+                    }
+
+                    if c == '>' {
+                        self.state = State::Data;
+                        return self.take_latest_token();
+                    }
+
+                    if self.is_eof() {
+                        return Some(HTMLToken::Eof);
+                    }
+
+                    self.reconsume = true;
+                    self.state = State::BeforeAttributeName;
+                }
+                State::SelfClosingStartTag => {
+                    if c == '>' {
+                        self.set_self_closing_flag();
+                        self.state = State::Data;
+                        return self.take_latest_token();
+                    }
+
+                    if self.is_eof() {
+                        return Some(HTMLToken::Eof);
+                    }
+                }
+                State::ScriptData => {
+                    if c == '<' {
+                        self.state = State::ScriptDataLessThanSign;
+                        continue;
+                    }
+
+                    if self.is_eof() {
+                        return Some(HTMLToken::Eof);
+                    }
+
+                    return Some(HTMLToken::Char(c));
                 }
                 _ => {}
             }
