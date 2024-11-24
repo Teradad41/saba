@@ -90,7 +90,7 @@ pub struct Node {
     first_child: Option<Rc<RefCell<Node>>>,
     last_child: Weak<RefCell<Node>>,
     previous_sibling: Weak<RefCell<Node>>,
-    next_sibling: Option<Weak<RefCell<Node>>>,
+    next_sibling: Option<Rc<RefCell<Node>>>,
 }
 
 impl Node {
@@ -160,11 +160,11 @@ impl Node {
         self.previous_sibling.clone()
     }
 
-    pub fn set_next_sibling(&mut self, next_sibling: Option<Weak<RefCell<Node>>>) {
+    pub fn set_next_sibling(&mut self, next_sibling: Option<Rc<RefCell<Node>>>) {
         self.next_sibling = next_sibling;
     }
 
-    pub fn next_sibling(&self) -> Option<Weak<RefCell<Node>>> {
+    pub fn next_sibling(&self) -> Option<Rc<RefCell<Node>>> {
         self.next_sibling.as_ref().cloned()
     }
 }
