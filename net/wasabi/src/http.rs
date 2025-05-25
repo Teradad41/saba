@@ -15,6 +15,7 @@ impl HttpClient {
     }
 
     pub fn get(&self, host: String, port: u16, path: String) -> Result<HttpResponse, Error> {
+        // 外部 API を呼び出して名前解決（正引き）
         let ips = match lookup_host(&host) {
             Ok(ips) => ips,
             Err(e) => {
@@ -32,7 +33,7 @@ impl HttpClient {
         let socket_addr: SocketAddr = (ips[0], port).into();
 
         let mut stream = match TcpStream::connect(socket_addr) {
-            Ok(stream) => stream,
+            Ok(stream) => stream, // TCP 接続が成功したら TcpStream を返す
             Err(_) => {
                 return Err(Error::Network(
                     "Failed to connect to TCP stream".to_string(),
@@ -40,6 +41,7 @@ impl HttpClient {
             }
         };
 
+        // TCP Stream に送信するデータを構築する
         let mut request = String::from("GET /");
         request.push_str(&path);
         request.push_str(" HTTP/1.1\n");
@@ -52,6 +54,7 @@ impl HttpClient {
         request.push_str("Connection: close\n");
         request.push_str("\n");
 
+        // Rust では使う予定のない変数をアンダースコア(_)で始める
         let _bytes_written = match stream.write(request.as_bytes()) {
             Ok(bytes) => bytes,
             Err(_) => return Err(Error::Network("Failed to write to TCP stream".to_string())),
@@ -74,6 +77,7 @@ impl HttpClient {
             received.extend_from_slice(&buf[..bytes_read]);
         }
 
+        // バイトから文字列型に変換して return
         match core::str::from_utf8(&received) {
             Ok(response) => HttpResponse::new(response.to_string()),
             Err(e) => Err(Error::Network(format!("Invalid received response: {}", e))),

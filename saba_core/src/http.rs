@@ -28,6 +28,7 @@ impl HttpResponse {
     pub fn new(raw_response: String) -> Result<Self, Error> {
         let preprocessed_response = raw_response.trim_start().replace("\n\r", "\n");
 
+        // 改行で分割
         let (status_line, remaining) = match preprocessed_response.split_once('\n') {
             Some((s, r)) => (s, r),
             None => {
@@ -50,10 +51,12 @@ impl HttpResponse {
                 }
                 (headers, b)
             }
+            // ヘッダーがなけらば空のベクターを返す
             None => (Vec::new(), remaining),
         };
 
         let statuses: Vec<&str> = status_line.split(' ').collect();
+
         Ok(Self {
             version: statuses[0].to_string(),
             status_code: statuses[1].parse().unwrap_or(404),
