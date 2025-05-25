@@ -4,16 +4,18 @@ use alloc::vec::Vec;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum HTMLToken {
+    // タグの開始
     StartTag {
         tag: String,
         self_closing: bool,
         attributes: Vec<Attribute>,
     },
+    // タグの終了
     EndTag {
         tag: String,
     },
-    Char(char),
-    Eof,
+    Char(char), // 文字
+    Eof,        // 入力文字列の終了
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -48,6 +50,7 @@ pub struct HtmlTokenizer {
     buf: String,
 }
 
+// 文字列からトークンに変換する構造体
 impl HtmlTokenizer {
     pub fn new(html: String) -> Self {
         Self {
@@ -55,13 +58,13 @@ impl HtmlTokenizer {
             pos: 0,
             reconsume: false,
             latest_token: None,
-            input: html.chars().collect(),
+            input: html.chars().collect(), // HTML 文字列を input として格納
             buf: String::new(),
         }
     }
 
     fn is_eof(&self) -> bool {
-        self.pos >= self.input.len()
+        self.pos > self.input.len()
     }
 
     fn consume_next_input(&mut self) -> char {
@@ -75,6 +78,7 @@ impl HtmlTokenizer {
         self.input[self.pos - 1]
     }
 
+    // StartTag or EndTag を生成して、last_token に設定する
     fn create_tag(&mut self, start_tag_token: bool) {
         if start_tag_token {
             self.latest_token = Some(HTMLToken::StartTag {
@@ -167,9 +171,11 @@ impl HtmlTokenizer {
     }
 }
 
+// Iterator トレイトを HTMLTokenizer に対して実装
 impl Iterator for HtmlTokenizer {
     type Item = HTMLToken;
 
+    // Iterator が返すのは HTMLToken か None
     fn next(&mut self) -> Option<Self::Item> {
         if self.pos >= self.input.len() {
             return None;
@@ -184,23 +190,29 @@ impl Iterator for HtmlTokenizer {
             match self.state {
                 State::Data => {
                     if c == '<' {
+                        // 文字が < だった場合、ステートを TagOpen に変更
                         self.state = State::TagOpen;
                         continue;
                     }
                     if self.is_eof() {
                         return Some(HTMLToken::Eof);
                     }
+                    // それ以外の場合は、文字トークンを返す
                     return Some(HTMLToken::Char(c));
                 }
                 State::TagOpen => {
                     if c == '/' {
+                        // "< → /" だったら EndTagOpen に移行
                         self.state = State::EndTagOpen;
                         continue;
                     }
 
+                    // アルファベットの場合、その文字を再度取り扱うため、
+                    // reconsume を true に設定し、TagName 状態に移行
                     if c.is_ascii_alphabetic() {
                         self.reconsume = true;
                         self.state = State::TagName;
+                        // StartTag を生成
                         self.create_tag(true);
                         continue;
                     }
@@ -220,6 +232,7 @@ impl Iterator for HtmlTokenizer {
                     if c.is_ascii_alphabetic() {
                         self.reconsume = true;
                         self.state = State::TagName;
+                        // EndTag を生成
                         self.create_tag(false);
                         continue;
                     }
