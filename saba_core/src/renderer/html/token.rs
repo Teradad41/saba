@@ -100,9 +100,7 @@ impl HtmlTokenizer {
                     self_closing: _,
                     attributes: _,
                 }
-                | HTMLToken::EndTag { ref mut tag } => {
-                    tag.push(c);
-                }
+                | HTMLToken::EndTag { ref mut tag } => tag.push(c),
                 _ => panic!("`latest_token` should be either StartTag or EndTag"),
             }
         }
@@ -135,6 +133,7 @@ impl HtmlTokenizer {
         }
     }
 
+    // create_tag によって作られた latest_token に属性の文字を追加する
     fn append_attribute(&mut self, c: char, is_name: bool) {
         assert!(self.latest_token.is_some());
 
@@ -155,6 +154,7 @@ impl HtmlTokenizer {
         }
     }
 
+    // latest_token が開始タグの場合、self_closing を true にする
     fn set_self_closing_flag(&mut self) {
         assert!(self.latest_token.is_some());
 
@@ -248,6 +248,7 @@ impl Iterator for HtmlTokenizer {
                         continue;
                     }
 
+                    // ステートを Data に戻して create_tag で作った latest_token を返す
                     if c == '>' {
                         self.state = State::Data;
                         return self.take_latest_token();
@@ -272,11 +273,11 @@ impl Iterator for HtmlTokenizer {
                     }
 
                     self.reconsume = true;
-                    self.state = State::AfterAttributeName;
+                    self.state = State::AttributeName;
                     self.start_new_attribute();
                 }
                 State::AttributeName => {
-                    if c == '=' || c == '/' || c == '>' || self.is_eof() {
+                    if c == ' ' || c == '/' || c == '>' || self.is_eof() {
                         self.reconsume = true;
                         self.state = State::AfterAttributeName;
                         continue;
@@ -350,7 +351,7 @@ impl Iterator for HtmlTokenizer {
                         return Some(HTMLToken::Eof);
                     }
 
-                    self.append_attribute(c, false);
+                    self.append_attribute(c, /*is_name*/ false);
                 }
                 State::AttributeValueSingleQuoted => {
                     if c == '\'' {
@@ -362,7 +363,7 @@ impl Iterator for HtmlTokenizer {
                         return Some(HTMLToken::Eof);
                     }
 
-                    self.append_attribute(c, false);
+                    self.append_attribute(c, /*is_name*/ false);
                 }
                 State::AttributeValueUnquoted => {
                     if c == ' ' {
@@ -381,13 +382,16 @@ impl Iterator for HtmlTokenizer {
 
                     self.append_attribute(c, false);
                 }
+                // 属性の値を処理した後の状態
                 State::AfterAttributeValueQuoted => {
                     if c == ' ' {
                         self.state = State::BeforeAttributeName;
+                        continue;
                     }
 
                     if c == '/' {
                         self.state = State::SelfClosingStartTag;
+                        continue;
                     }
 
                     if c == '>' {
@@ -400,6 +404,7 @@ impl Iterator for HtmlTokenizer {
                     }
 
                     self.reconsume = true;
+                    // 本では BeforeAttributeValue になってるけど多分 Name やな
                     self.state = State::BeforeAttributeName;
                 }
                 State::SelfClosingStartTag => {
@@ -413,6 +418,7 @@ impl Iterator for HtmlTokenizer {
                         return Some(HTMLToken::Eof);
                     }
                 }
+                // <script> タグに書かれている JavaScript を処理する状態
                 State::ScriptData => {
                     if c == '<' {
                         self.state = State::ScriptDataLessThanSign;
@@ -425,6 +431,7 @@ impl Iterator for HtmlTokenizer {
 
                     return Some(HTMLToken::Char(c));
                 }
+                // <script> 開始タグの中で小なり記号が出てきた時の状態
                 State::ScriptDataLessThanSign => {
                     if c == '/' {
                         self.buf = String::new();
@@ -448,6 +455,7 @@ impl Iterator for HtmlTokenizer {
                     self.state = State::ScriptData;
                     return Some(HTMLToken::Char('<'));
                 }
+                // <script> の (script) を解析している状態
                 State::ScriptDataEndTagName => {
                     if c == '>' {
                         self.state = State::Data;
