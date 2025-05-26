@@ -61,11 +61,12 @@ impl Element {
 
 #[derive(Debug, Clone)]
 pub enum NodeKind {
-    Document,
-    Element(Element),
-    Text(String),
+    Document,         // DOM ツリーのルート
+    Element(Element), // DOM ツリー内の要素ルート
+    Text(String),     // 要素ないのテキストコンテンツ
 }
 
+// DOM ツリーのルートを持ち、1つの web ページに1つのインスタンス
 #[derive(Debug, Clone)]
 pub struct Window {
     document: Rc<RefCell<Node>>,
@@ -85,6 +86,7 @@ impl Window {
         window
     }
 
+    // ブラウザから window.document で見られる
     pub fn document(&self) -> Rc<RefCell<Node>> {
         self.document.clone()
     }
@@ -93,12 +95,12 @@ impl Window {
 #[derive(Debug, Clone)]
 pub struct Node {
     pub kind: NodeKind,
-    window: Weak<RefCell<Window>>,
-    parent: Weak<RefCell<Node>>,
+    window: Weak<RefCell<Window>>, // DOM ツリーを持つウィンドウ。1ページ1インスタンス
+    parent: Weak<RefCell<Node>>,   // 親ノード（弱い参照）
     first_child: Option<Rc<RefCell<Node>>>,
-    last_child: Weak<RefCell<Node>>,
-    previous_sibling: Weak<RefCell<Node>>,
-    next_sibling: Option<Rc<RefCell<Node>>>,
+    last_child: Weak<RefCell<Node>>, // 最後の子ノード（弱い参照）
+    previous_sibling: Weak<RefCell<Node>>, // ノードの前の兄弟ノード（弱い参照）
+    next_sibling: Option<Rc<RefCell<Node>>>, // ノードの次の兄弟ノード
 }
 
 impl Node {
