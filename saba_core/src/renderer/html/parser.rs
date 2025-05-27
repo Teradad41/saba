@@ -20,13 +20,14 @@ pub enum InsertionMode {
     AfterAfterBody,
 }
 
+// DOM ツリーを構築するための情報を格納する構造体
 #[derive(Debug, Clone)]
 pub struct HtmlParser {
     window: Rc<RefCell<Window>>,
     mode: InsertionMode,
-    original_insertion_mode: InsertionMode,
-    stack_of_open_elements: Vec<Rc<RefCell<Node>>>,
-    t: HtmlTokenizer,
+    original_insertion_mode: InsertionMode, // とある状態に遷移した時に以前の挿入モードを保存する
+    stack_of_open_elements: Vec<Rc<RefCell<Node>>>, // 構文解析中にブラウザが使用するスタック
+    t: HtmlTokenizer,                       // t.next() メソッドを使用する
 }
 
 impl HtmlParser {
@@ -50,10 +51,14 @@ impl HtmlParser {
         Node::new(NodeKind::Text(s))
     }
 
+    // HTML の構造を解析して要素ノードを作成し、挿入先の位置を決定する
+    // TODO: よくわかってない
     fn insert_element(&mut self, tag: &str, attributes: Vec<Attribute>) {
         let window = self.window.borrow();
+        // 現在開いている要素スタックの最後のノードを取得
         let current = match self.stack_of_open_elements.last() {
             Some(n) => n.clone(),
+            // スタックが空の場合はルートの要素
             None => window.document(),
         };
         let node = Rc::new(RefCell::new(self.create_element(tag, attributes)));
@@ -102,7 +107,7 @@ impl HtmlParser {
         };
 
         // current がテキストノードの場合 → テキストノードに文字を追加
-        if let NodeKind::Text(ref mut s) = current.borrow_mut().kind() {
+        if let NodeKind::Text(ref mut s) = current.borrow_mut().kind {
             s.push(c);
             return;
         };
@@ -112,6 +117,7 @@ impl HtmlParser {
         }
 
         let node = Rc::new(RefCell::new(self.create_char(c)));
+
         if current.borrow().first_child().is_some() {
             current
                 .borrow()
@@ -184,6 +190,7 @@ impl HtmlParser {
         while token.is_some() {
             match self.mode {
                 InsertionMode::Initial => {
+                    // 文字トークンは無視する
                     if let Some(HTMLToken::Char(_)) = token {
                         token = self.t.next();
                         continue;
@@ -205,6 +212,7 @@ impl HtmlParser {
                             self_closing: _,
                             ref attributes,
                         }) => {
+                            // 開始タグトークンで html タグだった場合は、DOM ツリーに HTML 要素を追加
                             if tag == "html" {
                                 self.insert_element(tag, attributes.to_vec());
                                 self.mode = InsertionMode::BeforeHead;
@@ -217,6 +225,7 @@ impl HtmlParser {
                         }
                         _ => {}
                     }
+                    // それ以外の場合でも自動的に HTML 要素を追加
                     self.insert_element("html", Vec::new());
                     self.mode = InsertionMode::BeforeHead;
                     continue;
@@ -246,6 +255,7 @@ impl HtmlParser {
                         }
                         _ => {}
                     }
+                    // head がなくても追加
                     self.insert_element("head", Vec::new());
                     self.mode = InsertionMode::InHead;
                     continue;
@@ -325,11 +335,24 @@ impl HtmlParser {
                         }
                         _ => {}
                     }
+                    // body タグがなくても追加
                     self.insert_element("body", Vec::new());
                     self.mode = InsertionMode::InBody;
                     continue;
                 }
                 InsertionMode::InBody => match token {
+                    Some(HTMLToken::StartTag {
+                        ref tag,
+                        self_closing: _,
+                        ref attributes,
+                    }) => match tag.as_str() {
+                        "p" => {
+                            self.insert_element(tag, attributes.to_vec());
+                            token = self.t.next();
+                            continue;
+                        }
+                        _ => token = self.t.next(),
+                    },
                     Some(HTMLToken::EndTag { ref tag }) => match tag.as_str() {
                         "body" => {
                             self.mode = InsertionMode::AfterBody;
@@ -358,6 +381,7 @@ impl HtmlParser {
                     }
                     _ => {}
                 },
+                // style タグと script タグが開始した後
                 InsertionMode::Text => {
                     match token {
                         Some(HTMLToken::Eof) | None => {
@@ -377,6 +401,7 @@ impl HtmlParser {
                                 continue;
                             }
                         }
+                        // 終了タグ以外は文字をテキストノードとして DOM に追加する
                         Some(HTMLToken::Char(c)) => {
                             self.insert_char(c);
                             token = self.t.next();
@@ -389,6 +414,7 @@ impl HtmlParser {
                 }
                 InsertionMode::AfterBody => {
                     match token {
+                        // 文字トークンの時は無視
                         Some(HTMLToken::Char(_c)) => {
                             token = self.t.next();
                             continue;
@@ -414,17 +440,19 @@ impl HtmlParser {
                             token = self.t.next();
                             continue;
                         }
+                        // DOM ツリーをリターン
                         Some(HTMLToken::Eof) | None => {
                             return self.window.clone();
                         }
                         _ => {}
                     }
-
+                    // パースの失敗
                     self.mode = InsertionMode::InBody;
                 }
             }
         }
 
+        // 構築し終えたら、ルートノードを持つ Window オブジェクトを返す
         self.window.clone()
     }
 }
