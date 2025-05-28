@@ -1,21 +1,23 @@
 #![no_std]
-#![cfg_attr(target_os = "linux", no_main)]
 #![no_main]
 
 extern crate alloc;
 
-use alloc::string::ToString;
-use net_wasabi::http::HttpClient;
-use noli::prelude::*;
+use alloc::rc::Rc;
+use core::cell::RefCell;
+use noli::*;
+use saba_core::browser::Browser;
+use ui_wasabi::app::WasabiUI;
 
 fn main() -> u64 {
-    let client = HttpClient::new();
-    match client.get("host.test".to_string(), 8000, "/test.html".to_string()) {
-        Ok(res) => {
-            println!("response: \n{:?}", res);
-        }
+    let browser = Browser::new();
+    let ui = Rc::new(RefCell::new(WasabiUI::new(browser)));
+
+    match ui.borrow_mut().start() {
+        Ok(_) => {}
         Err(e) => {
-            println!("error: \n{:?}", e);
+            println!("browser fails to start: {:?}", e);
+            return 1;
         }
     }
     0
