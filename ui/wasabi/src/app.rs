@@ -46,7 +46,7 @@ impl WasabiUI {
     fn setup(&mut self) -> Result<(), Error> {
         if let Err(error) = self.setup_toolbar() {
             return Err(Error::InvalidUI(format!(
-                "failed to initialize a toolbar with error: {}",
+                "failed to initialize a toolbar with error: {:#?}",
                 error
             )));
         }
