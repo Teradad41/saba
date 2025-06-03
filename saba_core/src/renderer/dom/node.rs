@@ -5,6 +5,7 @@ use alloc::rc::Weak;
 use alloc::string::String;
 use alloc::vec::Vec;
 use core::cell::RefCell;
+use core::fmt::{Display, Formatter};
 use core::str::FromStr;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -39,6 +40,23 @@ impl FromStr for ElementKind {
     }
 }
 
+impl Display for ElementKind {
+    fn fmt(&self, f: &mut Formatter) -> core::fmt::Result {
+        let s = match self {
+            ElementKind::Html => "html",
+            ElementKind::Head => "head",
+            ElementKind::Style => "style",
+            ElementKind::Script => "script",
+            ElementKind::Body => "body",
+            ElementKind::H1 => "h1",
+            ElementKind::H2 => "h2",
+            ElementKind::P => "p",
+            ElementKind::A => "a",
+        };
+        write!(f, "{}", s)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Element {
     kind: ElementKind,
@@ -51,6 +69,13 @@ impl Element {
             kind: ElementKind::from_str(element_name)
                 .expect("failed to convert string to ElementKind"),
             attributes,
+        }
+    }
+
+    pub fn is_block_element(&self) -> bool {
+        match self.kind {
+            ElementKind::Body | ElementKind::H1 | ElementKind::H2 | ElementKind::P => true,
+            _ => false,
         }
     }
 
