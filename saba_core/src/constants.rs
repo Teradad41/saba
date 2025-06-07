@@ -4,11 +4,11 @@ pub static WINDOW_HEIGHT: i64 = 400;
 pub static WINDOW_PADDING: i64 = 5;
 
 // 色に関する定数
-pub static WHITE: u32 = 0xFFFFFFFF;
-pub static LIGHT_GRAY: u32 = 0xFFd3d3d3;
-pub static GRAY: u32 = 0xFF808080;
-pub static DARK_GRAY: u32 = 0xFF5A5A5A;
-pub static BLACK: u32 = 0xFF000000;
+pub static WHITE: u32 = 0xFFFFFF;
+pub static LIGHT_GRAY: u32 = 0xd3d3d3;
+pub static GRAY: u32 = 0x808080;
+pub static DARK_GRAY: u32 = 0x5A5A5A;
+pub static BLACK: u32 = 0x000000;
 
 pub static ADDRESS_BAR_HEIGHT: i64 = 20;
 
