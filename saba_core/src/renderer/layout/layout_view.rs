@@ -1,7 +1,11 @@
+use crate::constants::CONTENT_AREA_WIDTH;
 use crate::renderer::css::cssom::StyleSheet;
 use crate::renderer::dom::api::get_target_element_node;
 use crate::renderer::dom::node::{ElementKind, Node};
-use crate::renderer::layout::layout_object::LayoutObject;
+use crate::renderer::layout::computed_style::DisplayType;
+use crate::renderer::layout::layout_object::{
+    LayoutObject, LayoutObjectKind, LayoutPoint, LayoutSize,
+};
 use alloc::rc::Rc;
 use core::cell::RefCell;
 
@@ -23,7 +27,172 @@ impl LayoutView {
         tree
     }
 
+    fn update_layout(&mut self) {
+        Self::calculate_node_size(&self.root, LayoutSize::new(CONTENT_AREA_WIDTH, 0));
+
+        Self::calculate_node_position(
+            &self.root,
+            LayoutPoint::new(0, 0),
+            LayoutObjectKind::Block,
+            None,
+            None,
+        );
+    }
+
+    fn calculate_node_size(node: &Option<Rc<RefCell<LayoutObject>>>, parent_size: LayoutSize) {
+        if let Some(n) = node {
+            if n.borrow().kind() == LayoutObjectKind::Block {
+                n.borrow_mut().compute_size(parent_size);
+            }
+
+            let first_child = n.borrow().first_child();
+            Self::calculate_node_size(&first_child, n.borrow().size());
+
+            let next_sibling = n.borrow().next_sibling();
+            Self::calculate_node_size(&next_sibling, parent_size);
+
+            n.borrow_mut().compute_size(parent_size);
+        }
+    }
+
+    fn calculate_node_position(
+        node: &Option<Rc<RefCell<LayoutObject>>>,
+        parent_point: LayoutPoint,
+        previous_sibling_kind: LayoutObjectKind,
+        previous_sibling_point: Option<LayoutPoint>,
+        previous_sibling_size: Option<LayoutSize>,
+    ) {
+        if let Some(n) = node {
+            n.borrow_mut().compute_position(
+                parent_point,
+                previous_sibling_kind,
+                previous_sibling_point,
+                previous_sibling_size,
+            );
+
+            let first_child = n.borrow().first_child();
+            Self::calculate_node_position(
+                &first_child,
+                n.borrow().point(),
+                LayoutObjectKind::Block,
+                Some(n.borrow().point()),
+                Some(n.borrow().size()),
+            );
+        }
+    }
+
     pub fn root(&self) -> Option<Rc<RefCell<LayoutObject>>> {
         self.root.clone()
     }
+}
+
+fn build_layout_tree(
+    node: &Option<Rc<RefCell<Node>>>,
+    parent_obj: &Option<Rc<RefCell<LayoutObject>>>,
+    cssom: &StyleSheet,
+) -> Option<Rc<RefCell<LayoutObject>>> {
+    // create_layout_object 関数によって、ノードとなる LayoutObject の作成を試みる。
+    // CSS によって "display: none" が指定されていた場合、ノードは作成されない
+    let mut target_node = node.clone();
+    let mut layout_object = create_layout_object(node, parent_obj, cssom);
+
+    while layout_object.is_none() {
+        if let Some(n) = target_node {
+            target_node = n.borrow().next_sibling().clone();
+            layout_object = create_layout_object(&target_node, parent_obj, cssom);
+        } else {
+            return layout_object;
+        }
+    }
+
+    if let Some(n) = target_node {
+        let original_first_child = n.borrow().first_child();
+        let original_next_sibling = n.borrow().next_sibling();
+        let mut first_child = build_layout_tree(&original_first_child, &layout_object, cssom);
+        let mut next_sibling = build_layout_tree(&original_next_sibling, &None, cssom);
+
+        if first_child.is_none() && original_first_child.is_some() {
+            let mut original_dom_node = original_first_child
+                .expect("first child should exist")
+                .borrow()
+                .next_sibling();
+
+            loop {
+                first_child = build_layout_tree(&original_dom_node, &layout_object, cssom);
+
+                if first_child.is_none() && original_dom_node.is_some() {
+                    original_dom_node = original_dom_node
+                        .expect("next sibling should exist")
+                        .borrow()
+                        .next_sibling();
+                    continue;
+                }
+                break;
+            }
+        }
+
+        if next_sibling.is_none() && n.borrow().next_sibling().is_some() {
+            let mut original_dom_node = original_next_sibling
+                .expect("first child should exist")
+                .borrow()
+                .next_sibling();
+
+            loop {
+                next_sibling = build_layout_tree(&original_dom_node, &None, cssom);
+
+                if next_sibling.is_none() && original_dom_node.is_some() {
+                    original_dom_node = original_dom_node
+                        .expect("next sibling should exist")
+                        .borrow()
+                        .next_sibling();
+                    continue;
+                }
+                break;
+            }
+        }
+
+        let obj: Rc<RefCell<LayoutObject>> = match layout_object {
+            Some(ref obj) => obj.clone(),
+            None => panic!("layout object should exist here"),
+        };
+
+        obj.borrow_mut().set_first_child(first_child);
+        obj.borrow_mut().set_next_sibling(next_sibling);
+    }
+
+    layout_object
+}
+
+pub fn create_layout_object(
+    node: &Option<Rc<RefCell<Node>>>,
+    parent_obj: &Option<Rc<RefCell<LayoutObject>>>,
+    cssom: &StyleSheet,
+) -> Option<Rc<RefCell<LayoutObject>>> {
+    if let Some(n) = node {
+        let layout_object = Rc::new(RefCell::new(LayoutObject::new(n.clone(), parent_obj)));
+
+        for rule in &cssom.rules {
+            if layout_object.borrow().is_node_selected(&rule.selector) {
+                layout_object
+                    .borrow_mut()
+                    .cascading_style(rule.declarations.clone());
+            }
+        }
+
+        let parent_style = if let Some(parent) = parent_obj {
+            Some(parent.borrow().style())
+        } else {
+            None
+        };
+
+        layout_object.borrow_mut().defaulting_style(n, parent_style);
+
+        if layout_object.borrow().style().display() == DisplayType::DisplayNone {
+            return None;
+        }
+
+        layout_object.borrow_mut().update_kind();
+        return Some(layout_object);
+    }
+    None
 }
