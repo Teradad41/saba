@@ -363,3 +363,9 @@ impl LayoutSize {
         self.height = height;
     }
 }
+
+impl PartialEq for LayoutObject {
+    fn eq(&self, other: &Self) -> bool {
+        self.kind == other.kind
+    }
+}

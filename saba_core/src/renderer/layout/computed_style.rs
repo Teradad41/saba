@@ -102,7 +102,8 @@ impl ComputedStyle {
     }
 
     pub fn font_size(&self) -> FontSize {
-        self.font_size
+        // MEMO: テキストとは異なる部分
+        <Option<FontSize> as Clone>::clone(&self.font_size)
             .expect("failed to access CSS property: font_size")
     }
 
